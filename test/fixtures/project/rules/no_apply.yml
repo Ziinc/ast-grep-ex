@@ -1,0 +1,13 @@
+id: no-apply-in-lib
+language: elixir
+severity: info
+message: Avoid apply/3 with a literal function name
+files:
+  - lib/**/*.ex
+ignores:
+  - lib/generated/**
+rule:
+  pattern: apply($MOD, $FUN, $ARGS)
+constraints:
+  FUN:
+    kind: atom
