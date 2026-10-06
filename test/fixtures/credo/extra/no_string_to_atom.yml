@@ -1,0 +1,9 @@
+id: no-string-to-atom
+language: elixir
+severity: error
+message: String.to_atom/1 can exhaust the atom table
+metadata:
+  credo_category: design
+  credo_priority: normal
+rule:
+  pattern: String.to_atom($A)

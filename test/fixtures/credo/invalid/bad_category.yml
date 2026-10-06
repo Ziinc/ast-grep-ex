@@ -1,0 +1,7 @@
+id: bad-category
+language: elixir
+message: Bad category
+metadata:
+  credo_category: style
+rule:
+  pattern: foo($A)

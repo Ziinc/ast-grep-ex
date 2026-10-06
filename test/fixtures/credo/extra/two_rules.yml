@@ -1,0 +1,11 @@
+id: first-rule
+language: elixir
+message: First
+rule:
+  pattern: first($A)
+---
+id: second-rule
+language: elixir
+message: Second
+rule:
+  pattern: second($A)

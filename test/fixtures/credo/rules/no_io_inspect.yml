@@ -1,0 +1,9 @@
+id: no-io-inspect
+language: elixir
+severity: warning
+message: Remove IO.inspect($A)
+note: IO.inspect/1 calls are usually debugging leftovers.
+url: https://example.com/rules/no-io-inspect
+rule:
+  pattern: IO.inspect($A)
+fix: $A

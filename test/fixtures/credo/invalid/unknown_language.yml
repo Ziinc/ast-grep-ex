@@ -1,0 +1,5 @@
+id: broken
+language: cobol
+message: Broken
+rule:
+  pattern: foo

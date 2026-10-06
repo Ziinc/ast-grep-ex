@@ -1,0 +1,6 @@
+id: no-dbg-via-util
+language: elixir
+severity: warning
+message: Remove dbg calls
+rule:
+  matches: dbg-call

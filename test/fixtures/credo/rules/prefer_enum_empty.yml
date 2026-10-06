@@ -1,0 +1,9 @@
+id: prefer-enum-empty
+language: elixir
+severity: hint
+message: Use Enum.empty?($L) instead of length($L) == 0
+metadata:
+  credo_category: readability
+rule:
+  pattern: length($L) == 0
+fix: Enum.empty?($L)
