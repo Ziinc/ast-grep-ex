@@ -1,0 +1,4 @@
+# Configuration for https://github.com/cross-rs/cross, used by the
+# "Build precompiled NIFs" workflow for linux aarch64 and musl targets.
+[build.env]
+passthrough = ["RUSTLER_NIF_VERSION"]

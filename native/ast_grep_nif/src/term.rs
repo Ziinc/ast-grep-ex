@@ -14,7 +14,9 @@ pub fn decode_value(term: Term) -> Result<Value, String> {
             } else if let Ok(b) = term.decode::<bool>() {
                 Ok(Value::Bool(b))
             } else {
-                let name = term.atom_to_string().map_err(|_| "invalid atom".to_string())?;
+                let name = term
+                    .atom_to_string()
+                    .map_err(|_| "invalid atom".to_string())?;
                 Ok(Value::String(name))
             }
         }

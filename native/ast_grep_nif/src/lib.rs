@@ -138,7 +138,10 @@ fn language_for_path(path: String) -> Option<String> {
 /// (which may hold several `---` separated documents) or an Elixir map /
 /// keyword list describing a single document.
 #[rustler::nif(schedule = "DirtyCpu")]
-fn compile_rules<'a>(rules: Vec<Term<'a>>, utils: Vec<Term<'a>>) -> Result<ResourceArc<RuleSet>, String> {
+fn compile_rules<'a>(
+    rules: Vec<Term<'a>>,
+    utils: Vec<Term<'a>>,
+) -> Result<ResourceArc<RuleSet>, String> {
     let mut util_configs: Vec<SerializableGlobalRule<SupportLang>> = vec![];
     for util in utils {
         util_configs.extend(documents(util, "utility rule")?);
@@ -287,9 +290,8 @@ fn lang_from_path(path: &str) -> Option<SupportLang> {
 fn resolve_lang(lang: Option<&str>, path: Option<&str>) -> Result<SupportLang, String> {
     match (lang, path) {
         (Some(lang), _) => parse_lang(lang),
-        (None, Some(path)) => {
-            lang_from_path(path).ok_or_else(|| format!("cannot infer language from path `{}`", path))
-        }
+        (None, Some(path)) => lang_from_path(path)
+            .ok_or_else(|| format!("cannot infer language from path `{}`", path)),
         (None, None) => Err("either a language or a path is required".to_string()),
     }
 }
@@ -370,9 +372,14 @@ fn offset_range(source: &str, start: usize, end: usize) -> Range {
 
 fn offset_position(source: &str, offset: usize) -> Position {
     let before = &source.as_bytes()[..offset.min(source.len())];
-    let line_start = before.iter().rposition(|&b| b == b'\n').map_or(0, |i| i + 1);
+    let line_start = before
+        .iter()
+        .rposition(|&b| b == b'\n')
+        .map_or(0, |i| i + 1);
     let line = before.iter().filter(|&&b| b == b'\n').count();
-    let column = String::from_utf8_lossy(&before[line_start..]).chars().count();
+    let column = String::from_utf8_lossy(&before[line_start..])
+        .chars()
+        .count();
     Position {
         line: line + 1,
         column: column + 1,
