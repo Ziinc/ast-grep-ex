@@ -1,0 +1,29 @@
+[package]
+name = "ast_grep_nif"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+name = "ast_grep_nif"
+path = "src/lib.rs"
+crate-type = ["cdylib"]
+
+[features]
+default = ["nif_version_2_15"]
+nif_version_2_15 = ["rustler/nif_version_2_15"]
+nif_version_2_16 = ["rustler/nif_version_2_16"]
+nif_version_2_17 = ["rustler/nif_version_2_17"]
+
+[dependencies]
+rustler = { version = "0.38", default-features = false }
+ast-grep-core = "0.45"
+ast-grep-config = "0.45"
+ast-grep-language = "0.45"
+serde = { version = "1", features = ["derive"] }
+serde_yaml = "0.9"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true

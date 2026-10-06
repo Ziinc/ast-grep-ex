@@ -1,0 +1,11 @@
+/_build/
+/cover/
+/deps/
+/doc/
+/.fetch
+erl_crash.dump
+*.ez
+ast_grep-*.tar
+/tmp/
+/priv/native/
+/native/ast_grep_nif/target/
