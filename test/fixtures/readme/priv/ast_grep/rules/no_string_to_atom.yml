@@ -1,0 +1,11 @@
+id: no-string-to-atom
+language: elixir
+severity: info
+message: String.to_atom/1 can exhaust the atom table
+note: Use String.to_existing_atom/1 instead.
+url: https://example.com/rules/no-string-to-atom
+metadata:
+  credo_category: design
+  credo_priority: higher
+rule:
+  pattern: String.to_atom($A)

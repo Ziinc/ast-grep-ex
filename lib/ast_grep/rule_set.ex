@@ -316,6 +316,15 @@ defmodule AstGrep.RuleSet do
 
   # Attributes a compilation error of the whole set to the file causing it,
   # by compiling the files one at a time.
+  defp attribute("invalid utility rule `" <> rest = message, _rule_files, util_files, _utils) do
+    [id | _] = String.split(rest, "`", parts: 2)
+
+    Enum.find_value(util_files, Error.new(message), fn {path, content} ->
+      if Enum.any?(documents(content), &(document_id(&1) == id)),
+        do: Error.for_file(path, message)
+    end)
+  end
+
   defp attribute("invalid utility rules" <> _ = message, _rule_files, util_files, _utils) do
     Enum.find_value(util_files, Error.new(message), fn {path, content} ->
       case Native.compile_rules([], [content]) do
@@ -323,6 +332,31 @@ defmodule AstGrep.RuleSet do
         {:error, _} -> Error.for_file(path, message)
       end
     end)
+  end
+
+  # A duplicate id is attributed to the (first) file redefining it.
+  defp attribute("duplicate rule id `" <> rest = message, rule_files, _util_files, _utils) do
+    [id | _] = String.split(rest, "`", parts: 2)
+
+    Enum.reduce_while(rule_files, {nil, Error.new(message)}, fn {path, content}, {first, error} ->
+      count = content |> documents() |> Enum.count(&(document_id(&1) == id))
+
+      cond do
+        count == 0 ->
+          {:cont, {first, error}}
+
+        first != nil ->
+          message = "#{message} (already defined in #{Path.relative_to_cwd(first)})"
+          {:halt, {first, Error.for_file(path, message)}}
+
+        count > 1 ->
+          {:halt, {path, Error.for_file(path, message)}}
+
+        true ->
+          {:cont, {path, error}}
+      end
+    end)
+    |> elem(1)
   end
 
   defp attribute(message, rule_files, _util_files, utils) do

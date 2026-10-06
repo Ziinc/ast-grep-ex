@@ -1,0 +1,6 @@
+id: no-dbg
+language: elixir
+severity: error
+message: Remove dbg calls
+rule:
+  matches: dbg-call

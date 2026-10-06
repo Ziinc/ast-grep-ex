@@ -3,23 +3,20 @@
 //! Rules are compiled once into a [`RuleSet`] resource and can then be used to
 //! scan any number of sources, from any number of BEAM processes.
 
+mod compile;
 mod term;
 
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Component, Path, PathBuf};
 use std::str::FromStr;
 
-use ast_grep_config::{
-    CombinedScan, DeserializeEnv, GlobalRules, LabelStyle, RuleCollection, RuleConfig,
-    SerializableGlobalRule, SerializableRuleConfig, Severity,
-};
+use ast_grep_config::{CombinedScan, LabelStyle, RuleCollection, RuleConfig, Severity};
 use ast_grep_core::meta_var::MetaVariable;
 use ast_grep_core::tree_sitter::StrDoc;
 use ast_grep_core::{Node, NodeMatch};
 use ast_grep_language::{LanguageExt, SupportLang};
+use compile::Source;
 use rustler::{Atom, Encoder, Env, NifStruct, ResourceArc, Term};
-use serde::de::DeserializeOwned;
-use serde_yaml::with::singleton_map_recursive;
 
 mod atoms {
     rustler::atoms! {
@@ -142,30 +139,9 @@ fn compile_rules<'a>(
     rules: Vec<Term<'a>>,
     utils: Vec<Term<'a>>,
 ) -> Result<ResourceArc<RuleSet>, String> {
-    let mut util_configs: Vec<SerializableGlobalRule<SupportLang>> = vec![];
-    for util in utils {
-        util_configs.extend(documents(util, "utility rule")?);
-    }
-    let globals = if util_configs.is_empty() {
-        GlobalRules::default()
-    } else {
-        DeserializeEnv::<SupportLang>::parse_global_utils(util_configs)
-            .map_err(|e| format!("invalid utility rules: {}", error_chain(&e)))?
-    };
-
-    let mut configs = vec![];
-    for rule in rules {
-        let docs: Vec<SerializableRuleConfig<SupportLang>> = documents(rule, "rule")?;
-        for doc in docs {
-            let id = doc.id.clone();
-            let config = RuleConfig::try_from(doc, &globals)
-                .map_err(|e| format!("invalid rule `{}`: {}", id, error_chain(&e)))?;
-            configs.push(config);
-        }
-    }
-
-    let collection = RuleCollection::try_new(configs)
-        .map_err(|e| format!("invalid `files`/`ignores` glob: {}", e))?;
+    let rules = sources(rules, "rule")?;
+    let utils = sources(utils, "utility rule")?;
+    let collection = compile::compile(rules, utils)?;
     Ok(ResourceArc::new(RuleSet { collection }))
 }
 
@@ -206,8 +182,8 @@ fn scan<'a>(
     path: Option<String>,
 ) -> Result<Vec<Match<'a>>, String> {
     let lang = resolve_lang(lang.as_deref(), path.as_deref())?;
-    let path = Path::new(path.as_deref().unwrap_or(""));
-    let rules = rule_set.collection.get_rule_from_lang(path, lang);
+    let path = glob_path(path.as_deref());
+    let rules = rule_set.collection.get_rule_from_lang(&path, lang);
     if rules.is_empty() {
         return Ok(vec![]);
     }
@@ -287,6 +263,16 @@ fn lang_from_path(path: &str) -> Option<SupportLang> {
     SupportLang::from_path(path)
 }
 
+/// The path matched against rule `files`/`ignores` globs: `.` components
+/// (as in `./lib/a.ex`) and repeated separators are dropped, since globs are
+/// matched against the path as a string.
+fn glob_path(path: Option<&str>) -> PathBuf {
+    Path::new(path.unwrap_or(""))
+        .components()
+        .filter(|c| !matches!(c, Component::CurDir))
+        .collect()
+}
+
 fn resolve_lang(lang: Option<&str>, path: Option<&str>) -> Result<SupportLang, String> {
     match (lang, path) {
         (Some(lang), _) => parse_lang(lang),
@@ -296,36 +282,17 @@ fn resolve_lang(lang: Option<&str>, path: Option<&str>) -> Result<SupportLang, S
     }
 }
 
-/// Deserializes all documents held by `term`.
-fn documents<T: DeserializeOwned>(term: Term, what: &str) -> Result<Vec<T>, String> {
-    if let Ok(yaml) = term.decode::<String>() {
-        let mut docs = vec![];
-        for de in serde_yaml::Deserializer::from_str(&yaml) {
-            let doc = singleton_map_recursive::deserialize(de)
-                .map_err(|e| format!("invalid {} YAML: {}", what, e))?;
-            docs.push(doc);
-        }
-        Ok(docs)
-    } else {
-        let value = term::decode_value(term).map_err(|e| format!("invalid {}: {}", what, e))?;
-        let doc = singleton_map_recursive::deserialize(value)
-            .map_err(|e| format!("invalid {}: {}", what, e))?;
-        Ok(vec![doc])
-    }
-}
-
-fn error_chain(err: &dyn std::error::Error) -> String {
-    let mut msg = err.to_string();
-    let mut source = err.source();
-    while let Some(cause) = source {
-        let cause_msg = cause.to_string();
-        if !msg.contains(&cause_msg) {
-            msg.push_str(": ");
-            msg.push_str(&cause_msg);
-        }
-        source = cause.source();
-    }
-    msg
+/// Converts rule terms (YAML binaries, maps or keyword lists) to sources.
+fn sources(terms: Vec<Term>, what: &str) -> Result<Vec<Source>, String> {
+    terms
+        .into_iter()
+        .map(|term| match term.decode::<String>() {
+            Ok(yaml) => Ok(Source::Yaml(yaml)),
+            Err(_) => term::decode_value(term)
+                .map(Source::Value)
+                .map_err(|e| format!("invalid {}: {}", what, e)),
+        })
+        .collect()
 }
 
 fn severity_atom(severity: &Severity) -> Atom {
@@ -488,3 +455,151 @@ fn dump_node(node: &Node<Doc>, depth: usize, field: Option<&str>, out: &mut Stri
 }
 
 rustler::init!("Elixir.AstGrep.Native");
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use compile::error_chain;
+
+    fn pos(line: usize, column: usize, offset: usize) -> (usize, usize, usize) {
+        (line, column, offset)
+    }
+
+    fn tuple(p: Position) -> (usize, usize, usize) {
+        (p.line, p.column, p.offset)
+    }
+
+    #[test]
+    fn offset_position_counts_lines_and_columns_from_one() {
+        let source = "foo(1)\nbar(2)\n  baz(3)";
+        assert_eq!(tuple(offset_position(source, 0)), pos(1, 1, 0));
+        assert_eq!(tuple(offset_position(source, 4)), pos(1, 5, 4));
+        // The newline itself is the last column of its line.
+        assert_eq!(tuple(offset_position(source, 6)), pos(1, 7, 6));
+        assert_eq!(tuple(offset_position(source, 7)), pos(2, 1, 7));
+        assert_eq!(tuple(offset_position(source, 16)), pos(3, 3, 16));
+    }
+
+    #[test]
+    fn offset_position_counts_columns_in_characters() {
+        // "é" is 2 bytes, "😀" is 4 bytes.
+        let source = "x = \"é😀\"\ny";
+        assert_eq!(tuple(offset_position(source, 5)), pos(1, 6, 5));
+        assert_eq!(tuple(offset_position(source, 7)), pos(1, 7, 7));
+        assert_eq!(tuple(offset_position(source, 11)), pos(1, 8, 11));
+        assert_eq!(tuple(offset_position(source, 13)), pos(2, 1, 13));
+    }
+
+    #[test]
+    fn offset_position_at_and_past_the_end() {
+        let source = "ab\ncd";
+        assert_eq!(tuple(offset_position(source, 5)), pos(2, 3, 5));
+        assert_eq!(tuple(offset_position("ab\n", 3)), pos(2, 1, 3));
+        assert_eq!(tuple(offset_position("", 0)), pos(1, 1, 0));
+        // Offsets past the end are clamped for line/column but kept as given.
+        assert_eq!(tuple(offset_position(source, 99)), pos(2, 3, 99));
+    }
+
+    #[test]
+    fn parse_lang_accepts_names_and_aliases_case_insensitively() {
+        assert_eq!(parse_lang("elixir"), Ok(SupportLang::Elixir));
+        assert_eq!(parse_lang("Elixir"), Ok(SupportLang::Elixir));
+        assert_eq!(parse_lang("ex"), Ok(SupportLang::Elixir));
+        assert_eq!(parse_lang("js"), Ok(SupportLang::JavaScript));
+        assert_eq!(parse_lang("TypeScript"), Ok(SupportLang::TypeScript));
+        assert_eq!(
+            parse_lang("cobol"),
+            Err("cobol is not supported!".to_string())
+        );
+    }
+
+    #[test]
+    fn lang_from_path_uses_the_extension() {
+        assert_eq!(lang_from_path("lib/foo.ex"), Some(SupportLang::Elixir));
+        assert_eq!(
+            lang_from_path("test/foo_test.exs"),
+            Some(SupportLang::Elixir)
+        );
+        assert_eq!(lang_from_path("/abs/app.ts"), Some(SupportLang::TypeScript));
+        assert_eq!(lang_from_path("README"), None);
+        assert_eq!(lang_from_path("a.unknown"), None);
+    }
+
+    #[test]
+    fn resolve_lang_prefers_the_language_over_the_path() {
+        assert_eq!(
+            resolve_lang(Some("js"), Some("lib/a.ex")),
+            Ok(SupportLang::JavaScript)
+        );
+        assert_eq!(
+            resolve_lang(None, Some("lib/a.ex")),
+            Ok(SupportLang::Elixir)
+        );
+        assert_eq!(
+            resolve_lang(None, Some("a.unknown")),
+            Err("cannot infer language from path `a.unknown`".to_string())
+        );
+        assert_eq!(
+            resolve_lang(None, None),
+            Err("either a language or a path is required".to_string())
+        );
+        assert_eq!(
+            resolve_lang(Some("cobol"), Some("lib/a.ex")),
+            Err("cobol is not supported!".to_string())
+        );
+    }
+
+    #[derive(Debug)]
+    struct TestError(&'static str, Option<Box<TestError>>);
+
+    impl std::fmt::Display for TestError {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str(self.0)
+        }
+    }
+
+    impl std::error::Error for TestError {
+        fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+            self.1.as_deref().map(|e| e as _)
+        }
+    }
+
+    #[test]
+    fn error_chain_joins_causes_skipping_repeated_messages() {
+        let leaf = TestError("bad pattern", None);
+        assert_eq!(error_chain(&leaf), "bad pattern");
+
+        let err = TestError(
+            "cannot parse rule",
+            Some(Box::new(TestError(
+                "invalid pattern",
+                Some(Box::new(TestError("cannot parse rule", None))),
+            ))),
+        );
+        assert_eq!(error_chain(&err), "cannot parse rule: invalid pattern");
+
+        let nested = TestError(
+            "outer",
+            Some(Box::new(TestError(
+                "middle",
+                Some(Box::new(TestError("inner", None))),
+            ))),
+        );
+        assert_eq!(error_chain(&nested), "outer: middle: inner");
+    }
+
+    #[test]
+    fn glob_path_drops_current_directory_components() {
+        assert_eq!(glob_path(None), Path::new(""));
+        assert_eq!(glob_path(Some("lib/a.ex")), Path::new("lib/a.ex"));
+        assert_eq!(glob_path(Some("./lib/a.ex")), Path::new("lib/a.ex"));
+        assert_eq!(
+            glob_path(Some("././lib/./b//a.ex")),
+            Path::new("lib/b/a.ex")
+        );
+        assert_eq!(glob_path(Some("../lib/a.ex")), Path::new("../lib/a.ex"));
+        assert_eq!(glob_path(Some("/abs/./a.ex")), Path::new("/abs/a.ex"));
+        // The path compares as a string when matching globs.
+        assert_eq!(glob_path(Some("./lib//a.ex")).to_str(), Some("lib/a.ex"));
+    }
+}

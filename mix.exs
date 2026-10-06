@@ -11,6 +11,7 @@ defmodule AstGrep.MixProject do
       elixir: "~> 1.15",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
+      test_coverage: test_coverage(),
       description:
         "ast-grep structural search, lint rules and rewrites for Elixir, with Credo integration.",
       package: package(),
@@ -29,6 +30,16 @@ defmodule AstGrep.MixProject do
       {:rustler, "~> 0.36", optional: true},
       {:credo, "~> 1.7", optional: true},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false}
+    ]
+  end
+
+  # `mix test --cover` fails below the threshold (percent of lib/ lines).
+  # AstGrep.Native only holds NIF stubs, and the derived Inspect
+  # implementation is generated code.
+  defp test_coverage do
+    [
+      ignore_modules: [AstGrep.Native, Inspect.AstGrep.RuleSet],
+      summary: [threshold: 92]
     ]
   end
 

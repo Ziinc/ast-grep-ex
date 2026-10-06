@@ -1,0 +1,13 @@
+# rules/no_io_inspect.yml
+id: no-io-inspect
+language: elixir
+severity: warning
+message: Remove IO.inspect($A)
+note: IO.inspect/1 calls should not be committed.
+rule:
+  pattern: IO.inspect($A)
+fix: $A
+ignores:
+  - "test/**"
+metadata:
+  credo_category: warning # optional: consistency | design | readability | refactor | warning

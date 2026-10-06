@@ -1,0 +1,5 @@
+# sgconfig.yml
+ruleDirs:
+  - rules
+utilDirs:
+  - utils

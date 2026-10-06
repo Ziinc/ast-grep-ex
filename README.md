@@ -24,8 +24,14 @@ end
 ```
 
 Precompiled NIFs are downloaded for common targets. To build from source
-instead (requires Rust 1.91+ and a C compiler), set `AST_GREP_BUILD=1` and add
-`{:rustler, ">= 0.0.0", optional: true}` to your deps.
+instead (requires Rust 1.91+ and a C compiler), add
+`{:rustler, ">= 0.0.0", optional: true}` to your deps and either set
+`AST_GREP_BUILD=1` when compiling, or configure:
+
+```elixir
+# config/config.exs
+config :rustler_precompiled, :force_build, ast_grep: true
+```
 
 ## Writing rules
 
@@ -135,16 +141,27 @@ The task exits with a non-zero status if any match has severity `error`.
 ## Library API
 
 ```elixir
+source = """
+defmodule MyApp do
+  def run(user) do
+    IO.inspect(user, label: :x)
+  end
+end
+"""
+
 # Ad-hoc search with metavariables
 {:ok, [match]} = AstGrep.find(source, "IO.inspect($A, $$$OPTS)", language: :elixir)
 match.meta_variables #=> %{"A" => "user", "OPTS" => ["label: :x"]}
 match.range.start    #=> %AstGrep.Position{line: 3, column: 5, offset: 42}
 
-# Rule objects as maps / keyword lists
-AstGrep.find(source, [kind: "call", has: [pattern: "IO", stopBy: "end"]], language: :elixir)
+# Rule objects as maps / keyword lists: the calls containing `IO`
+{:ok, matches} =
+  AstGrep.find(source, [kind: "call", has: [pattern: "IO", stopBy: "end"]], language: :elixir)
+length(matches) #=> 3 (defmodule ..., def run ..., IO.inspect(...))
 
 # Rewrite
-{:ok, new_source} = AstGrep.replace(source, "IO.inspect($A)", "dbg($A)", language: :elixir)
+{:ok, new_source} = AstGrep.replace(source, "IO.inspect($A, $$$OPTS)", "dbg($A)", language: :elixir)
+new_source =~ "    dbg(user)\n" #=> true
 
 # Lint with a rule set
 rule_set = AstGrep.RuleSet.from_config!("sgconfig.yml")
@@ -153,10 +170,26 @@ fixed = AstGrep.apply_fixes(File.read!("lib/my_app.ex"), matches)
 
 # Inspect the syntax tree while writing rules
 {:ok, tree} = AstGrep.dump_tree("IO.inspect(x)", :elixir)
+IO.puts(tree)
+# source (1,1)-(1,14)
+#   call (1,1)-(1,14)
+#     target: dot (1,1)-(1,11)
+#       left: alias (1,1)-(1,3) "IO"
+#       right: identifier (1,4)-(1,11) "inspect"
+#     arguments (1,11)-(1,14)
+#       identifier (1,12)-(1,13) "x"
 ```
 
 See `AstGrep`, `AstGrep.RuleSet`, `AstGrep.Credo.Check` and
 `AstGrep.Credo.Rule` for full documentation.
+
+## Examples
+
+[`examples/demo_app`](examples/demo_app) is a small project using every
+feature: rules for each ast-grep feature (with tests), Credo integration
+(`AstGrep.Credo.Check` and per-rule checks), `mix ast_grep.scan` (including
+a JavaScript rule), and a runnable tour of the API
+(`mix run scripts/api_tour.exs`). Its test suite runs all of it end to end.
 
 ## Development
 

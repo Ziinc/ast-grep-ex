@@ -63,6 +63,14 @@ defmodule AstGrep.RuleSetTest do
       assert RuleSet.rule_ids(rule_set) == ["kw"]
     end
 
+    test "skips empty YAML documents" do
+      assert {:ok, rule_set} = RuleSet.compile("---\n" <> @yaml <> "---\n")
+      assert RuleSet.rule_ids(rule_set) == ["no-io-inspect"]
+
+      assert {:ok, rule_set} = RuleSet.compile(@yaml, utils: "# no utils yet\n---\n")
+      assert RuleSet.rule_ids(rule_set) == ["no-io-inspect"]
+    end
+
     test "compiles rules referencing global utility rules" do
       util = %{id: "is-dbg", language: "elixir", rule: %{pattern: "dbg($$$)"}}
       rule = %{id: "no-dbg", language: "elixir", rule: %{matches: "is-dbg"}}
@@ -72,6 +80,62 @@ defmodule AstGrep.RuleSetTest do
 
       assert {:error, %Error{message: message}} = RuleSet.compile(rule)
       assert message =~ "`is-dbg` is not defined"
+    end
+
+    test "rejects global utility rules referencing undefined utility rules" do
+      utils = [
+        %{id: "is-dbg", language: "elixir", rule: %{matches: "is-dbg-call"}},
+        %{id: "other", language: "elixir", rule: %{pattern: "other()"}}
+      ]
+
+      rule = %{id: "no-dbg", language: "elixir", rule: %{matches: "is-dbg"}}
+
+      assert {:error, %Error{message: message}} = RuleSet.compile(rule, utils: utils)
+      assert message =~ "invalid utility rule `is-dbg`"
+      assert message =~ "`is-dbg-call` is not defined"
+
+      # Also when no rule uses the utility, and in nested rules.
+      nested = %{
+        id: "nested",
+        language: "elixir",
+        rule: %{kind: "call", has: %{any: [%{matches: "other"}, %{matches: "nope"}]}}
+      }
+
+      assert {:error, %Error{message: message}} = RuleSet.compile([], utils: [nested | utils])
+      assert message =~ "`nope` is not defined"
+
+      # References to other global and local utility rules are fine.
+      utils = [
+        %{
+          id: "is-dbg",
+          language: "elixir",
+          utils: %{"local" => %{pattern: "dbg($$$)"}},
+          rule: %{any: [%{matches: "local"}, %{matches: "other"}]}
+        },
+        %{id: "other", language: "elixir", rule: %{pattern: "other()"}}
+      ]
+
+      assert {:ok, rule_set} = RuleSet.compile(rule, utils: utils)
+
+      assert ["dbg(1)", "other()"] =
+               "dbg(1)\nother()"
+               |> AstGrep.scan!(rule_set, language: :elixir)
+               |> Enum.map(& &1.text)
+    end
+
+    test "names the utility rule in utility rule errors" do
+      utils = [
+        %{id: "good", language: "elixir", rule: %{pattern: "good()"}},
+        %{id: "bad-pattern", language: "elixir", rule: %{pattern: "foo(("}}
+      ]
+
+      assert {:error, %Error{message: message}} = RuleSet.compile([], utils: utils)
+      assert message =~ "invalid utility rule `bad-pattern`: "
+      assert message =~ "pattern"
+
+      utils = [%{id: "bad-kind", language: "elixir", rule: %{kind: "no_such_kind"}}]
+      assert {:error, %Error{message: message}} = RuleSet.compile([], utils: utils)
+      assert message =~ "invalid utility rule `bad-kind`: "
     end
 
     test "returns errors for invalid rules" do
@@ -100,6 +164,20 @@ defmodule AstGrep.RuleSetTest do
       assert message =~ "glob"
 
       assert_raise Error, ~r/invalid rule/, fn -> RuleSet.compile!("id: x\nrule: [\n") end
+    end
+
+    test "rejects duplicate rule ids" do
+      rule = %{id: "dup", language: "elixir", rule: %{pattern: "a()"}}
+
+      assert {:error, %Error{message: message, path: nil}} = RuleSet.compile([rule, rule])
+      assert message =~ "duplicate rule id `dup`"
+
+      # Across documents of a YAML source, and including disabled rules.
+      yaml = "id: dup\nlanguage: elixir\nseverity: off\nrule:\n  pattern: b()\n"
+      assert {:error, %Error{message: message}} = RuleSet.compile([rule, yaml])
+      assert message =~ "duplicate rule id `dup`"
+
+      assert_raise Error, ~r/duplicate rule id `dup`/, fn -> RuleSet.compile!([rule, rule]) end
     end
 
     test "stores :root" do
@@ -181,7 +259,37 @@ defmodule AstGrep.RuleSetTest do
       assert {:error, %Error{path: ^bad, message: message}} =
                RuleSet.load(Path.join(dir, "rule.yml"), utils: Path.join(dir, "utils"))
 
-      assert message =~ "invalid utility rules"
+      assert message =~ "b.yml: invalid utility rule `b`: "
+    end
+
+    test "attributes duplicate rule ids to the file redefining them", %{tmp_dir: dir} do
+      File.write!(Path.join(dir, "a.yml"), @yaml)
+      File.write!(Path.join(dir, "b.yml"), "id: other\nlanguage: elixir\nrule:\n  pattern: x\n")
+      dup = Path.join(dir, "c.yml")
+      File.write!(dup, @yaml)
+
+      assert {:error, %Error{path: ^dup, message: message}} = RuleSet.load(dir)
+      assert message =~ "c.yml: duplicate rule id `no-io-inspect` (already defined in "
+      assert message =~ "a.yml)"
+    end
+
+    test "attributes undefined utility references to the utility's file", %{tmp_dir: dir} do
+      File.write!(Path.join(dir, "rule.yml"), @yaml)
+      File.mkdir_p!(Path.join(dir, "utils"))
+      # a.yml references b.yml's utility: fine.
+      File.write!(Path.join(dir, "utils/a.yml"), "id: a\nlanguage: elixir\nrule:\n  matches: b\n")
+      bad = Path.join(dir, "utils/b.yml")
+
+      File.write!(
+        bad,
+        "id: b\nlanguage: elixir\nrule:\n  any:\n    - pattern: b\n    - matches: c\n"
+      )
+
+      assert {:error, %Error{path: ^bad, message: message}} =
+               RuleSet.load(Path.join(dir, "rule.yml"), utils: Path.join(dir, "utils"))
+
+      assert message =~ "b.yml: invalid utility rule `b`"
+      assert message =~ "`c` is not defined"
     end
 
     test "fails on missing paths", %{tmp_dir: dir} do

@@ -1,0 +1,4 @@
+id: dbg-call
+language: elixir
+rule:
+  pattern: dbg($$$)

@@ -119,15 +119,16 @@ defmodule AstGrep do
     * `:language` - the language of `source`. Inferred from `:path` when not
       given.
     * `:path` - the path of the source, relative to the project root (e.g.
-      `"lib/my_app.ex"`), used to match rule globs.
+      `"lib/my_app.ex"`), used to match rule globs. An absolute path inside
+      the rule set's `:root` is made relative to it.
 
   """
   @spec scan(String.t(), RuleSet.t(), keyword()) :: {:ok, [Match.t()]} | {:error, Error.t()}
-  def scan(source, %RuleSet{ref: ref}, opts \\ []) when is_binary(source) do
-    path = opts |> Keyword.get(:path) |> clean_path()
+  def scan(source, %RuleSet{ref: ref} = rule_set, opts \\ []) when is_binary(source) do
+    path = with path when not is_nil(path) <- Keyword.get(opts, :path), do: to_string(path)
 
     with {:ok, language} <- optional_language(opts) do
-      case Native.scan(ref, source, language, path) do
+      case Native.scan(ref, source, language, glob_path(path, rule_set.root)) do
         {:ok, matches} -> {:ok, matches}
         {:error, message} -> {:error, Error.new(message, path)}
       end
@@ -353,9 +354,13 @@ defmodule AstGrep do
     end
   end
 
-  defp clean_path(nil), do: nil
-  defp clean_path("./" <> path), do: clean_path(path)
-  defp clean_path(path), do: to_string(path)
+  # The path matched against rule globs: absolute paths under the rule set's
+  # root are made relative to it. (`./` components are dropped by the NIF.)
+  defp glob_path(path, root) when is_binary(path) and is_binary(root) do
+    if Path.type(path) == :absolute, do: Paths.relative_to(path, root) || path, else: path
+  end
+
+  defp glob_path(path, _root), do: path
 
   defp fix_of(%Match{fix: fix}), do: fix
   defp fix_of(%Fix{} = fix), do: fix

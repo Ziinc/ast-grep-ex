@@ -3,23 +3,31 @@ defmodule AstGrep.Native do
 
   version = Mix.Project.config()[:version]
 
-  use RustlerPrecompiled,
-    otp_app: :ast_grep,
-    crate: "ast_grep_nif",
-    base_url: "https://github.com/Ziinc/ast-grep-ex/releases/download/v#{version}",
-    version: version,
-    force_build: System.get_env("AST_GREP_BUILD") in ["1", "true"] or Mix.env() in [:dev, :test],
-    nif_versions: ["2.15", "2.16", "2.17"],
-    targets: ~w(
-      aarch64-apple-darwin
-      aarch64-unknown-linux-gnu
-      aarch64-unknown-linux-musl
-      x86_64-apple-darwin
-      x86_64-pc-windows-gnu
-      x86_64-pc-windows-msvc
-      x86_64-unknown-linux-gnu
-      x86_64-unknown-linux-musl
-    )
+  # `force_build: true` in dev/test or with AST_GREP_BUILD=1, else unset so
+  # that `config :rustler_precompiled, :force_build, ast_grep: true` applies.
+  force_build_opts =
+    AstGrep.Native.Build.force_build_opts(System.get_env("AST_GREP_BUILD"), Mix.env())
+
+  rustler_opts =
+    [
+      otp_app: :ast_grep,
+      crate: "ast_grep_nif",
+      base_url: "https://github.com/Ziinc/ast-grep-ex/releases/download/v#{version}",
+      version: version,
+      nif_versions: ["2.15", "2.16", "2.17"],
+      targets: ~w(
+        aarch64-apple-darwin
+        aarch64-unknown-linux-gnu
+        aarch64-unknown-linux-musl
+        x86_64-apple-darwin
+        x86_64-pc-windows-gnu
+        x86_64-pc-windows-msvc
+        x86_64-unknown-linux-gnu
+        x86_64-unknown-linux-musl
+      )
+    ] ++ force_build_opts
+
+  use RustlerPrecompiled, rustler_opts
 
   def languages, do: err()
   def normalize_language(_lang), do: err()

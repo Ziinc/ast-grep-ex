@@ -242,6 +242,27 @@ defmodule AstGrepTest do
       assert ids.(language: :elixir) == []
     end
 
+    test "relativizes absolute paths under the rule set's root", %{rule_set: rule_set} do
+      source = "apply(Foo, :bar, [])"
+      ids = fn opts -> source |> AstGrep.scan!(rule_set, opts) |> Enum.map(& &1.rule_id) end
+
+      assert rule_set.root == @project
+      assert ids.(path: Path.join(@project, "lib/foo.ex")) == ["no-apply-in-lib"]
+      assert ids.(path: Path.join(@project, "lib/generated/foo.ex")) == []
+      assert ids.(path: Path.join(@project, "scripts/foo.exs")) == []
+      assert ids.(path: Path.join(@project, "./lib/./nested/foo.ex")) == ["no-apply-in-lib"]
+      assert ids.(path: "lib/./nested//foo.ex") == ["no-apply-in-lib"]
+      assert ids.(path: "././lib/foo.ex") == ["no-apply-in-lib"]
+
+      # Outside of the root, the path is used as is.
+      assert ids.(path: "/elsewhere/lib/foo.ex") == []
+
+      # Without a root, absolute paths are used as is.
+      assert source
+             |> AstGrep.scan!(%{rule_set | root: nil}, path: Path.join(@project, "lib/foo.ex"))
+             |> Enum.map(& &1.rule_id) == []
+    end
+
     test "only runs rules of the source language", %{rule_set: rule_set} do
       assert AstGrep.scan("IO.inspect(1)", rule_set, language: :ruby) == {:ok, []}
     end
