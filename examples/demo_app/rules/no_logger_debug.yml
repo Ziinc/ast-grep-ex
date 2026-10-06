@@ -1,0 +1,9 @@
+# Demonstrates: `severity: off`. The rule is kept in the repository but not
+# compiled (AstGrep.RuleSet drops it), so DemoApp.Orders' Logger.debug call is
+# not reported. Change the severity to enable it.
+id: no-logger-debug
+language: elixir
+severity: off
+message: Remove Logger.debug calls
+rule:
+  pattern: Logger.debug($$$)

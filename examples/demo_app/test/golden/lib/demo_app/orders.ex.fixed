@@ -1,0 +1,47 @@
+defmodule DemoApp.Orders do
+  @moduledoc """
+  Orders and shipping.
+  """
+
+  require Logger
+
+  @doc "Ships an order if it is valid and paid."
+  def ship(order) do
+    case validate(order) do
+      {:ok, order} ->
+        case order.status do
+          :paid -> deliver(order)
+          _ -> {:error, :not_paid}
+        end
+
+      error ->
+        error
+    end
+  end
+
+  @doc "Ships a list of orders."
+  def ship_all(orders) do
+    if Enum.empty?(orders) do
+      :nothing_to_ship
+    else
+      Enum.map(orders, &ship/1)
+    end
+  end
+
+  @doc "Prints an order, for use in IEx."
+  def print(order) do
+    # ast-grep-ignore
+    IO.inspect(order)
+  end
+
+  defp validate(%{id: _, email: _} = order), do: {:ok, order}
+  defp validate(_order), do: {:error, :invalid}
+
+  defp deliver(order) do
+    IO.puts("Shipping order #{order.id}")
+    Logger.debug("delivering order #{order.id}")
+    Process.sleep(100)
+    DemoApp.Mailer.deliver(order.email, :shipped)
+    {:ok, %{order | status: :shipped}}
+  end
+end

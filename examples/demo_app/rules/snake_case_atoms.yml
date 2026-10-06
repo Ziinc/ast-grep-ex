@@ -1,0 +1,21 @@
+# Demonstrates: matching by node `kind` plus a `regex` on the node text, and a
+# `transform` with `convert`/`toCase` used in the message and the fix.
+#
+#   Map.get(params, :firstName)   -- fix -->   Map.get(params, :first_name)
+id: snake-case-atoms
+language: elixir
+severity: info
+message: Use $SNAKE instead of $ATOM
+rule:
+  kind: atom
+  regex: "^:[a-z]+[A-Z]"
+  # Capture the whole node so that `transform` can use it.
+  pattern: $ATOM
+transform:
+  SNAKE:
+    convert:
+      source: $ATOM
+      toCase: snakeCase
+fix: $SNAKE
+metadata:
+  credo_category: consistency

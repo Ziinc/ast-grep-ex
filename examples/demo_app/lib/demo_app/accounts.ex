@@ -1,0 +1,47 @@
+defmodule DemoApp.Accounts do
+  @moduledoc """
+  User accounts.
+  """
+
+  @users %{1 => %{id: 1, name: "Ada", role: "admin", email: "ada@example.com"}}
+
+  @doc "Registers a user from the params of the payment provider's webhook."
+  def register(params) do
+    user = IO.inspect(build_user(params))
+    {:ok, user}
+  end
+
+  @doc "Fetches a user, raising when it does not exist."
+  def fetch_user(id) do
+    case Map.fetch(@users, id) do
+      {:ok, user} -> user
+      :error -> raise ArgumentError, "unknown user #{id}"
+    end
+  end
+
+  @doc "Returns the role of a user as an atom."
+  def role(user), do: String.to_atom(user.role)
+
+  @doc "Returns whether a user is an admin."
+  def admin?(user) do
+    # Roles come from a fixed list, not from user input.
+    # credo:disable-for-next-line DemoApp.Checks.NoStringToAtom
+    String.to_atom(user.role) == :admin
+  end
+
+  @doc "Lists the users without an email."
+  def without_email(users) do
+    dbg(users)
+    Enum.filter(users, &is_nil(&1[:email]))
+  end
+
+  defp build_user(params) do
+    %{
+      name: Map.get(params, :firstName),
+      # The payment provider's API uses camelCase keys.
+      # ast-grep-ignore: snake-case-atoms
+      provider_id: Map.get(params, :customerId),
+      role: "member"
+    }
+  end
+end

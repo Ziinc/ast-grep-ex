@@ -1,0 +1,8 @@
+# Demonstrates: reusing a global utility rule from utils/ with `matches:`, and
+# `severity: error` (Credo priority: higher; `mix ast_grep.scan` exits non-zero).
+id: no-dbg
+language: elixir
+severity: error
+message: Remove dbg/1 before committing
+rule:
+  matches: dbg-call

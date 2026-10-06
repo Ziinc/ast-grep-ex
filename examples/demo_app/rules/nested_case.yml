@@ -1,0 +1,21 @@
+# Demonstrates: a relational `inside` rule with `stopBy: end`, a `not` rule,
+# a `kind`, `severity: hint` and `metadata.credo_priority`. Hints are Credo
+# priority `low` (only shown by `mix credo --strict`), but `credo_priority`
+# raises this one to `normal` so plain `mix credo` shows it too.
+id: nested-case
+language: elixir
+severity: hint
+message: "Nested case on $X: consider `with` or a helper function"
+rule:
+  pattern: case $X do $$$ end
+  inside:
+    pattern: case $Y do $$$ end
+    stopBy: end
+  # A case inside an anonymous function (e.g. in Enum.map/2) is its own unit.
+  not:
+    inside:
+      kind: anonymous_function
+      stopBy: end
+metadata:
+  credo_category: refactor
+  credo_priority: normal

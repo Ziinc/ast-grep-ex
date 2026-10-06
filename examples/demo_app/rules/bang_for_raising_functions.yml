@@ -1,0 +1,19 @@
+# Demonstrates: a relational `has` rule with `stopBy: end` (search all
+# descendants, not only direct children), `constraints` with a `regex`, and
+# `metadata.credo_category`.
+id: bang-for-raising-functions
+language: elixir
+severity: warning
+message: "$NAME/1 can raise: name it $NAME! or return an error tuple"
+note: By convention, functions that raise end with `!` (`fetch_user!/1`).
+rule:
+  pattern: def $NAME($ARG) do $$$BODY end
+  has:
+    pattern: raise $$$
+    stopBy: end
+constraints:
+  # Already a bang function: fine.
+  NAME:
+    regex: "[^!]$"
+metadata:
+  credo_category: design

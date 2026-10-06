@@ -1,0 +1,26 @@
+# Demonstrates: a `$$$ARGS` multi-metavariable (zero or more nodes), a
+# `constraints` entry restricting a metavariable to a node `kind`, a
+# `transform` (`substring`) used in both the message and the fix, and
+# `metadata.credo_category`.
+#
+#   apply(DemoApp.Mailer, :deliver, [email, opts])
+#     -- fix -->  DemoApp.Mailer.deliver(email, opts)
+id: prefer-direct-call
+language: elixir
+severity: info
+message: Call $MOD.$NAME(...) directly instead of using apply/3
+rule:
+  pattern: apply($MOD, $FUN, [$$$ARGS])
+constraints:
+  # Only literal function names (`:deliver`), not variables.
+  FUN:
+    kind: atom
+transform:
+  # `:deliver` -> `deliver`
+  NAME:
+    substring:
+      source: $FUN
+      startChar: 1
+fix: $MOD.$NAME($$$ARGS)
+metadata:
+  credo_category: refactor

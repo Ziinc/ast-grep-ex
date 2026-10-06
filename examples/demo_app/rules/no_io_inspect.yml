@@ -1,0 +1,20 @@
+# Demonstrates: a plain `pattern` with a `$A` metavariable, a `fix` that
+# reuses it, metavariables in `message`, `note`, `url`, `ignores` globs and
+# `severity: warning` (Credo priority: high).
+#
+#   IO.inspect(build_user(attrs))   -- fix -->   build_user(attrs)
+id: no-io-inspect
+language: elixir
+severity: warning
+message: Remove debugging call IO.inspect($A)
+note: |
+  IO.inspect/1 calls are usually debugging leftovers. Use Logger, or
+  `mix ast_grep.scan --fix` to remove them.
+url: https://hexdocs.pm/elixir/IO.html#inspect/2
+rule:
+  pattern: IO.inspect($A)
+fix: $A
+# Globs are relative to the sgconfig.yml directory.
+ignores:
+  - "test/**"
+  - "scripts/**"

@@ -1,0 +1,9 @@
+# Demonstrates: rules for other languages. `mix ast_grep.scan` (and `sg scan`)
+# check assets/js/app.js with it; Credo only reads Elixir files, so it never
+# reports it.
+id: no-console-log
+language: javascript
+severity: warning
+message: Remove console.log($$$ARGS)
+rule:
+  pattern: console.log($$$ARGS)

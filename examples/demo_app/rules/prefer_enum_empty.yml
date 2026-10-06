@@ -1,0 +1,12 @@
+# Demonstrates: `severity: hint` (Credo priority `low`: only reported by
+# `mix credo --strict`), a fix, and `metadata.credo_category`.
+id: prefer-enum-empty
+language: elixir
+severity: hint
+message: Use Enum.empty?($L) instead of length($L) == 0
+note: length/1 walks the whole list, Enum.empty?/1 doesn't.
+rule:
+  pattern: length($L) == 0
+fix: Enum.empty?($L)
+metadata:
+  credo_category: readability

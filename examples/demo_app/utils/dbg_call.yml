@@ -1,0 +1,8 @@
+# A global utility rule (utilDirs in sgconfig.yml). It reports nothing on its
+# own; rules reference it by id with `matches: dbg-call`.
+#
+# Demonstrates: utilDirs, `$$$` (any number of arguments, including none).
+id: dbg-call
+language: elixir
+rule:
+  pattern: dbg($$$)

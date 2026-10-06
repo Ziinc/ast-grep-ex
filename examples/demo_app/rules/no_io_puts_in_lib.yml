@@ -1,0 +1,13 @@
+# Demonstrates: `files` and `ignores` globs (relative to sgconfig.yml's
+# directory) and `severity: info` (Credo priority: normal). IO.puts is fine
+# in the CLI module, scripts and tests, but library code should use Logger.
+id: no-io-puts-in-lib
+language: elixir
+severity: info
+message: Use Logger instead of IO.puts in library code
+rule:
+  pattern: IO.puts($$$)
+files:
+  - "lib/**/*.ex"
+ignores:
+  - lib/demo_app/cli.ex

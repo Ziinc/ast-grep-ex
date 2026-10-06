@@ -1,0 +1,7 @@
+# Mix build artifacts and dependencies
+/_build/
+/deps/
+/cover/
+/doc/
+erl_crash.dump
+*.ez

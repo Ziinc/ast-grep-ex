@@ -75,11 +75,64 @@ jobs:
       - name: Compile
         run: mix compile --warnings-as-errors
 
+      # Enforces the coverage threshold set in mix.exs (test_coverage).
+      - name: Run tests with coverage
+        run: mix test --cover
+
+  example:
+    name: Example (examples/demo_app)
+    runs-on: ubuntu-24.04
+    env:
+      MIX_ENV: test
+    defaults:
+      run:
+        working-directory: examples/demo_app
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v6
+
+      - name: Set up Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: "1.18"
+          otp-version: "27"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: native/ast_grep_nif
+          key: example
+
+      - name: Cache Mix deps and _build
+        uses: actions/cache@v4
+        with:
+          path: |
+            examples/demo_app/deps
+            examples/demo_app/_build
+          key: example-mix-${{ runner.os }}-1.18-27-${{ hashFiles('examples/demo_app/mix.lock') }}
+          restore-keys: |
+            example-mix-${{ runner.os }}-1.18-27-
+
+      - name: Install dependencies
+        run: mix deps.get
+
+      - name: Check formatting
+        run: mix format --check-formatted
+
+      - name: Compile
+        run: mix compile --warnings-as-errors
+
+      # Includes test/e2e_test.exs, which runs `mix credo`, `mix ast_grep.scan`
+      # (and --fix, on a copy) and scripts/api_tour.exs and checks their output.
       - name: Run tests
         run: mix test
 
   rust:
-    name: Rust fmt & clippy
+    name: Rust fmt, clippy & tests
     runs-on: ubuntu-24.04
     defaults:
       run:
@@ -103,4 +156,7 @@ jobs:
         run: cargo fmt --check
 
       - name: Clippy
-        run: cargo clippy -- -D warnings
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Unit tests
+        run: cargo test

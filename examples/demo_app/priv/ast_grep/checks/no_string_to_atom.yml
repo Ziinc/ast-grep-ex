@@ -1,0 +1,19 @@
+# A rule run by its own Credo check, DemoApp.Checks.NoStringToAtom
+# (credo_checks/no_string_to_atom.ex), so it can be configured on its own in
+# .credo.exs and has its own `mix credo explain` text.
+#
+# It lives outside the sgconfig.yml `ruleDirs` on purpose: rules in ruleDirs
+# are also run by AstGrep.Credo.Check, and would be reported twice.
+#
+# The Credo category comes from metadata.credo_category; the priority from the
+# severity (error -> higher).
+id: no-string-to-atom
+language: elixir
+severity: error
+message: "String.to_atom/1 can exhaust the atom table: use String.to_existing_atom/1"
+note: Atoms are never garbage collected. Never create atoms from user input.
+url: https://hexdocs.pm/elixir/String.html#to_atom/1
+rule:
+  pattern: String.to_atom($A)
+metadata:
+  credo_category: design

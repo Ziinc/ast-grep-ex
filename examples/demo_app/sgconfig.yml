@@ -1,0 +1,6 @@
+# ast-grep project config. Read by `mix ast_grep.scan`, `AstGrep.Credo.Check`
+# (via `mix credo`), `AstGrep.RuleSet.from_config/2` and the `sg` CLI.
+ruleDirs:
+  - rules
+utilDirs:
+  - utils
